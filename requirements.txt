@@ -1,0 +1,33 @@
+# Web Scraper Requirements
+
+## Node.js
+- Node.js >= 18.x (LTS recommended)
+
+## NPM Dependencies
+- playwright: ^1.58.1
+
+## Browser Requirements
+- Chromium (auto-installed via `npx playwright install chromium`)
+
+## Installation
+
+```bash
+# Install Node.js dependencies
+npm install
+
+# Install Chromium browser for Playwright
+npx playwright install chromium
+```
+
+## Usage
+
+```bash
+# Run the scraper
+npm start
+# or
+node scraper.js
+```
+
+## Output
+- `results.json` - JSON array of scraped article metadata
+- Console summary with per-site statistics

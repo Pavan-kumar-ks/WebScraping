@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Output files
+results.json
+*.log
+
+# Python virtual environment (legacy)
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Playwright
+playwright-report/
+test-results/
+playwright/.cache/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
