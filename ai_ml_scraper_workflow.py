@@ -1,10 +1,11 @@
 """
-Integrated AI/ML Article Scraper Workflow
-This script orchestrates the complete workflow:
-1. Takes URLs from scraper.py
-2. Finds AI/ML related links using ml_link_finder.py
+Integrated AI/ML Article Scraper Workflow with Batch Processing
+This script orchestrates the complete workflow with batch processing:
+1. Takes URLs from ml_link_finder.py in batches of 5
+2. Finds AI/ML related links from the current batch
 3. Scrapes article content (heading, date, paragraphs, country) from those links
 4. Organizes and saves results by country in separate folders
+5. Automatically cycles through all batches on subsequent runs
 """
 
 import asyncio
@@ -14,34 +15,53 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List
 
-from ml_link_finder import discover_ai_ml_links
-from scraper import TARGET_URLS, scrape_from_links
+from ml_link_finder import (CONFIG, TARGET_URLS, discover_ai_ml_links,
+                            get_next_batch)
+from scraper import scrape_from_links
 
 
 async def run_integrated_workflow():
-    """Run the complete AI/ML article scraping workflow"""
+    """Run the complete AI/ML article scraping workflow with batch processing"""
     workflow_start = datetime.now()
-    
+
+    # Get the next batch of URLs to process
+    batch_urls, current_batch, total_batches = get_next_batch(TARGET_URLS)
+
     print("=" * 70)
-    print(" AI/ML ARTICLE SCRAPER - INTEGRATED WORKFLOW")
+    print(" AI/ML ARTICLE SCRAPER - INTEGRATED WORKFLOW (BATCH MODE)")
     print("=" * 70)
     print(f"Started at: {workflow_start.isoformat()}")
-    print(f"Source URLs: {len(TARGET_URLS)}")
+    print(f"Total URLs: {len(TARGET_URLS)}")
+    print(f"Batch size: {CONFIG['batch_size']}")
+    print(f"Current batch: {current_batch + 1}/{total_batches}")
+    print(f"URLs in this batch: {len(batch_urls)}")
     print("=" * 70)
-    
-    # Step 1: Discover AI/ML related links
+
+    # Step 1: Discover AI/ML related links from current batch
     print("\n" + "=" * 70)
-    print("STEP 1: Discovering AI/ML Related Links")
+    print(f"STEP 1: Discovering AI/ML Links (Batch {current_batch + 1}/{total_batches})")
     print("=" * 70)
-    
-    link_discovery_result = await discover_ai_ml_links(TARGET_URLS)
-    
-    # Save link discovery results
-    with open("ai_ml_links.json", "w", encoding="utf-8") as f:
+
+    link_discovery_result = await discover_ai_ml_links(batch_urls)
+
+    # Create articles folder if it doesn't exist
+    articles_folder = "articles"
+    os.makedirs(articles_folder, exist_ok=True)
+
+    # Save link discovery results with batch info in articles folder
+    batch_links_file = os.path.join(articles_folder, f"ai_ml_links_batch_{current_batch + 1}.json")
+    link_discovery_result['metadata']['batch_info'] = {
+        'current_batch': current_batch + 1,
+        'total_batches': total_batches,
+        'batch_size': CONFIG['batch_size'],
+        'urls_in_batch': len(batch_urls)
+    }
+
+    with open(batch_links_file, "w", encoding="utf-8") as f:
         json.dump(link_discovery_result, f, indent=2, ensure_ascii=False)
-    
+
     print(f"\n[OK] Link discovery complete. Found {link_discovery_result['metadata']['totalLinksFound']} AI/ML links")
-    print(f"  Results saved to: ai_ml_links.json")
+    print(f"  Results saved to: {batch_links_file}")
     
     # Extract URLs from discovered links
     ai_ml_urls = [link['url'] for link in link_discovery_result['ai_ml_links']]
@@ -67,25 +87,26 @@ async def run_integrated_workflow():
         country = article.get('country', 'Unknown')
         articles_by_country[country].append(article)
 
-    # Create articles folder if it doesn't exist
-    articles_folder = "articles"
-    os.makedirs(articles_folder, exist_ok=True)
-
-    # Save articles organized by country
+    # Save articles organized by country with batch info
     country_files = {}
     for country, articles in articles_by_country.items():
         # Create country folder
         country_folder = os.path.join(articles_folder, country.replace(' ', '_'))
         os.makedirs(country_folder, exist_ok=True)
 
-        # Save articles to country-specific JSON file
-        country_file_path = os.path.join(country_folder, "articles.json")
+        # Save articles to country-specific JSON file with batch number
+        country_file_path = os.path.join(country_folder, f"articles_batch_{current_batch + 1}.json")
 
         country_output = {
             "metadata": {
                 "country": country,
                 "totalArticles": len(articles),
-                "scrapedAt": datetime.now().isoformat()
+                "scrapedAt": datetime.now().isoformat(),
+                "batch_info": {
+                    "current_batch": current_batch + 1,
+                    "total_batches": total_batches,
+                    "batch_size": CONFIG['batch_size']
+                }
             },
             "articles": articles
         }
@@ -96,8 +117,14 @@ async def run_integrated_workflow():
         country_files[country] = country_file_path
         print(f"  [OK] {country}: {len(articles)} articles -> {country_file_path}")
 
-    # Also save a combined file for reference
-    combined_output_path = "ai_ml_articles_combined.json"
+    # Also save a combined file for reference with batch info in articles folder
+    combined_output_path = os.path.join(articles_folder, f"ai_ml_articles_batch_{current_batch + 1}_combined.json")
+    scraping_result['metadata']['batch_info'] = {
+        'current_batch': current_batch + 1,
+        'total_batches': total_batches,
+        'batch_size': CONFIG['batch_size']
+    }
+
     with open(combined_output_path, "w", encoding="utf-8") as f:
         json.dump(scraping_result, f, indent=2, ensure_ascii=False)
 
@@ -106,11 +133,15 @@ async def run_integrated_workflow():
     # Step 3: Create summary report
     workflow_end = datetime.now()
     total_workflow_time = (workflow_end - workflow_start).total_seconds()
-    
+
     print("\n" + "=" * 70)
     print(" WORKFLOW COMPLETE - FINAL SUMMARY")
     print("=" * 70)
     print(f"Total workflow time: {total_workflow_time:.2f}s")
+    print(f"\nBatch Information:")
+    print(f"  • Current batch: {current_batch + 1}/{total_batches}")
+    print(f"  • URLs processed in this batch: {len(batch_urls)}")
+    print(f"  • Next batch: {((current_batch + 1) % total_batches) + 1}/{total_batches}")
     print(f"\nPhase 1 - Link Discovery:")
     print(f"  • Source URLs processed: {link_discovery_result['metadata']['totalSources']}")
     print(f"  • AI/ML links found: {link_discovery_result['metadata']['totalLinksFound']}")
@@ -123,10 +154,10 @@ async def run_integrated_workflow():
     print(f"\nArticles by Country:")
     for country, articles in sorted(articles_by_country.items(), key=lambda x: -len(x[1])):
         print(f"  • {country}: {len(articles)} articles")
-    print(f"\nOutput Files:")
-    print(f"  • AI/ML Links: ai_ml_links.json")
+    print(f"\nOutput Files (Batch {current_batch + 1}):")
+    print(f"  • AI/ML Links: {batch_links_file}")
     print(f"  • Combined Articles: {combined_output_path}")
-    print(f"  • By Country: articles/{{country}}/articles.json")
+    print(f"  • By Country: articles/{{country}}/articles_batch_{current_batch + 1}.json")
     print("=" * 70)
     
     # Display sample articles

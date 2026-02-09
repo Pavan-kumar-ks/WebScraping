@@ -12,6 +12,37 @@ from urllib.parse import urljoin, urlparse
 
 from playwright.async_api import BrowserContext, Page, async_playwright
 
+# Target URLs to scrape
+TARGET_URLS = [
+    "https://impact.indiaai.gov.in/media-resources?tab=press",
+    "https://indiaai.gov.in/articles/all",
+    "https://negd.gov.in/press-release/",
+    "https://cio.economictimes.indiatimes.com/news/artificial-intelligence",
+    "https://www.newsonair.gov.in/category/national/",
+    "https://cmogujarat.gov.in/en/news",
+    "https://timesofindia.indiatimes.com/technology/artificial-intelligence",
+    "https://www.hindustantimes.com/technology",
+    "https://ai.economictimes.com/",
+    "https://www.rswebsols.com/category/technology/",
+    "https://globalvoices.org/-/topics/technology/",
+    "http://analyticsindiamag.com/ai-news",
+    "https://tele.net.in/category/artificial-intelligence/",
+    "https://hubnetwork.in/?s=artificial+intelligence",
+    "https://rajbhavan.mizoram.gov.in/?s=artificial+intelligence",
+    "https://www.newindianexpress.com/search?q=artificial%20intelligence",
+    "https://www.visive.ai/_/search?query=Artificial%20Intelligence",
+    "https://nbbgc.org/?s=artificial+intelligence",
+    "https://www.thehindu.com/sci-tech/technology/",
+    "https://www.communicationstoday.co.in/?s=artificial+intelligence",
+    "https://www.eletimes.ai/?s=artificial+intelligence",
+    "https://www.databreachtoday.com/latest-news",
+    "https://indianexpress.com/section/technology/artificial-intelligence/",
+    "https://www.news18.com/tech/",
+    "https://theprint.in/?s=artificial+intelligence",
+    "https://www.aninews.in/search/?query=artificial+intelligence",
+    "https://egov.eletsonline.com/?s=artificial%20intelligence",
+]
+
 # AI/ML related keywords - grouped by specificity
 # High-confidence keywords that strongly indicate AI/ML content
 HIGH_CONFIDENCE_AI_ML_KEYWORDS = [
@@ -26,25 +57,75 @@ HIGH_CONFIDENCE_AI_ML_KEYWORDS = [
 MEDIUM_CONFIDENCE_AI_ML_KEYWORDS = [
     'chatbot', 'predictive analytics', 'data science', 'sentiment analysis',
     'recommendation system', 'classification model', 'regression model',
-    'training data', 'model training', 'inference', 'embedding'
+    'training data', 'model training', 'inference', 'embedding',
+    'algorithm', 'automation', 'neural', 'cognitive', 'intelligent system',
+    'pattern recognition', 'image recognition', 'speech recognition', 'nlp',
+    'big data', 'analytics', 'data mining', 'machine intelligence',
+    'smart', 'digital transformation', 'innovation', 'technology advancement',
+    'ai-powered', 'ml-based', 'intelligent', 'automated', 'prediction'
 ]
 
-# Negative keywords that indicate non-AI content
+# Negative keywords that indicate non-AI content (reduced list for less strict filtering)
 NEGATIVE_KEYWORDS = [
-    'phone launch', 'price cut', 'deal', 'offer', 'discount', 'sale',
-    'customs', 'duty', 'prepaid', 'postpaid', 'banking', 'loan',
-    'hdmi', 'cable', 'charger', 'battery', 'screen', 'display',
-    'iphone', 'samsung', 'vivo', 'oppo', 'xiaomi', 'redmi', 'oneplus',
-    'airtel', 'jio', 'vodafone', 'telecom operator', 'recharge'
+    'phone launch', 'price cut', 'prepaid', 'postpaid',
+    'charger', 'battery replacement', 'screen replacement',
+    'iphone launch', 'samsung launch', 'recharge plan'
 ]
 
 CONFIG = {
     "navigation_timeout": 30000,
     "concurrency": 5,
     "max_links_per_site": 50,
+    "batch_size": 5,  # Number of URLs to process per batch
+    "batch_state_file": "batch_state.json",  # File to track batch progress
 }
 
 BLOCKED_RESOURCES = ["image", "stylesheet", "font", "media", "other"]
+
+
+def get_current_batch_index() -> int:
+    """Load the current batch index from state file"""
+    try:
+        with open(CONFIG["batch_state_file"], "r") as f:
+            state = json.load(f)
+            return state.get("current_batch_index", 0)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return 0
+
+
+def save_batch_index(batch_index: int):
+    """Save the current batch index to state file"""
+    with open(CONFIG["batch_state_file"], "w") as f:
+        json.dump({"current_batch_index": batch_index}, f, indent=2)
+
+
+def get_next_batch(urls: List[str]) -> tuple[List[str], int, int]:
+    """
+    Get the next batch of URLs to process
+
+    Returns:
+        tuple: (batch_urls, current_batch_index, total_batches)
+    """
+    batch_size = CONFIG["batch_size"]
+    total_batches = (len(urls) + batch_size - 1) // batch_size  # Ceiling division
+
+    # Get current batch index
+    current_batch_index = get_current_batch_index()
+
+    # Calculate start and end indices for this batch
+    start_idx = current_batch_index * batch_size
+    end_idx = min(start_idx + batch_size, len(urls))
+
+    # Get the batch
+    batch_urls = urls[start_idx:end_idx]
+
+    # Calculate next batch index (cycle back to 0 if we've processed all batches)
+    next_batch_index = (current_batch_index + 1) % total_batches
+
+    # Save the next batch index for the next run
+    save_batch_index(next_batch_index)
+
+    return batch_urls, current_batch_index, total_batches
 
 
 def get_hostname(url: str) -> str:
@@ -65,12 +146,12 @@ def normalize_url(url: str, base_url: str) -> str:
 
 def is_ai_ml_related(text: str) -> bool:
     """
-    Check if text contains AI/ML related keywords using strict filtering.
+    Check if text contains AI/ML related keywords using relaxed filtering.
 
     Returns True only if:
     1. No negative keywords are present, AND
     2. At least one high-confidence keyword is present, OR
-    3. At least two medium-confidence keywords are present
+    3. At least one medium-confidence keyword is present
     """
     if not text:
         return False
@@ -98,8 +179,8 @@ def is_ai_ml_related(text: str) -> bool:
         if keyword in text_lower:
             medium_confidence_matches += 1
 
-    # Require at least 2 medium-confidence matches to accept
-    if medium_confidence_matches >= 2:
+    # Require at least 1 medium-confidence match to accept (relaxed from 2)
+    if medium_confidence_matches >= 1:
         return True
 
     return False
@@ -692,20 +773,39 @@ async def discover_ai_ml_links(source_urls: List[str]) -> Dict:
 
 
 async def main():
-    """Run the link finder with URLs from scraper.py"""
-    # Import URLs from scraper.py
-    from scraper import TARGET_URLS
+    """Run the link finder with batch processing"""
+    # Get the next batch of URLs to process
+    batch_urls, current_batch, total_batches = get_next_batch(TARGET_URLS)
 
-    # Find AI/ML related links
-    result = await discover_ai_ml_links(TARGET_URLS)
-    
-    # Save discovered links
-    output_path = "ai_ml_links.json"
+    print("=" * 60)
+    print("BATCH PROCESSING INFO")
+    print("=" * 60)
+    print(f"Total URLs: {len(TARGET_URLS)}")
+    print(f"Batch size: {CONFIG['batch_size']}")
+    print(f"Total batches: {total_batches}")
+    print(f"Current batch: {current_batch + 1}/{total_batches}")
+    print(f"URLs in this batch: {len(batch_urls)}")
+    print("=" * 60)
+    print()
+
+    # Find AI/ML related links from the current batch
+    result = await discover_ai_ml_links(batch_urls)
+
+    # Save discovered links with batch information
+    output_path = f"ai_ml_links_batch_{current_batch + 1}.json"
+    result["metadata"]["batch_info"] = {
+        "current_batch": current_batch + 1,
+        "total_batches": total_batches,
+        "batch_size": CONFIG['batch_size'],
+        "urls_in_batch": len(batch_urls)
+    }
+
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
-    
+
     print(f"\nAI/ML links saved to: {output_path}")
-    
+    print(f"Next run will process batch {((current_batch + 1) % total_batches) + 1}/{total_batches}")
+
     return result
 
 

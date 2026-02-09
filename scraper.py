@@ -13,36 +13,8 @@ from urllib.parse import urlparse
 
 from playwright.async_api import BrowserContext, Page, async_playwright
 
-# Target URLs to scrape
-TARGET_URLS = [
-    "https://impact.indiaai.gov.in/media-resources?tab=press",
-    "https://indiaai.gov.in/articles/all",
-    "https://negd.gov.in/press-release/",
-    "https://cio.economictimes.indiatimes.com/news/artificial-intelligence",
-    "https://www.newsonair.gov.in/category/national/",
-    "https://cmogujarat.gov.in/en/news",
-    "https://timesofindia.indiatimes.com/technology/artificial-intelligence",
-    "https://www.hindustantimes.com/technology",
-    "https://ai.economictimes.com/",
-    "https://www.rswebsols.com/category/technology/",
-    "https://globalvoices.org/-/topics/technology/",
-    "http://analyticsindiamag.com/ai-news",
-    "https://tele.net.in/category/artificial-intelligence/",
-    "https://hubnetwork.in/?s=artificial+intelligence",
-    "https://rajbhavan.mizoram.gov.in/?s=artificial+intelligence",
-    "https://www.newindianexpress.com/search?q=artificial%20intelligence",
-    "https://www.visive.ai/_/search?query=Artificial%20Intelligence",
-    "https://nbbgc.org/?s=artificial+intelligence",
-    "https://www.thehindu.com/sci-tech/technology/",
-    "https://www.communicationstoday.co.in/?s=artificial+intelligence",
-    "https://www.eletimes.ai/?s=artificial+intelligence",
-    "https://www.databreachtoday.com/latest-news",
-    "https://indianexpress.com/section/technology/artificial-intelligence/",
-    "https://www.news18.com/tech/",
-    "https://theprint.in/?s=artificial+intelligence",
-    "https://www.aninews.in/search/?query=artificial+intelligence",
-    "https://egov.eletsonline.com/?s=artificial%20intelligence",
-]
+# Import TARGET_URLS from ml_link_finder.py
+from ml_link_finder import TARGET_URLS
 
 # Configuration
 CONFIG = {
